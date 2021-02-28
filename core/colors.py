@@ -1,11 +1,12 @@
 import sys
 
-colors = True # Output should be colored
-machine = sys.platform # Detecting the os of current system
+colors = True  # Output should be colored
+machine = sys.platform  # Detecting the os of current system
 if machine.lower().startswith(('os', 'win', 'darwin', 'ios')):
-    colors = False # Colors shouldn't be displayed in mac & windows
+    colors = False  # Colors shouldn't be displayed in mac & windows
 if not colors:
     end = red = white = green = yellow = run = bad = good = info = que = ''
+    lightning = '⚡'
 else:
     white = '\033[97m'
     green = '\033[92m'
@@ -18,3 +19,4 @@ else:
     bad = '\033[91m[-]\033[0m'
     good = '\033[92m[+]\033[0m'
     run = '\033[97m[~]\033[0m'
+    lightning = '\033[93;5m⚡\033[0m'

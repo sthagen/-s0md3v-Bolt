@@ -23,28 +23,45 @@
 ![demo](https://i.ibb.co/mTtHTGP/Screenshot-2018-12-30-03-42-26.png)
 
 ### Important
-Bolt is in alpha phase of development which means it's full of bugs. Any production use of this tool discouraged.
+Bolt is in beta phase of development which means there can be bugs. Any production use of this tool discouraged.
 Pull requests and issues are welcome. I also suggest you to put this repo on watch if you are interested in it.
 
-### Current Features
-- Crawling
-- Complete HTTP Support
-- Checks
-  - Entropy
-  - Replay attack
-  - Absence of CSRF protection when requested from a mobile
-  - Removing CSRF token parameter from request
-  - Removing CSRF token from parameter
-  - Requesting resources with a fake token
-  - Potenial race condition
+### Workflow
 
-### Features to be added
-- Support CSRF tokens in cookies
-- Referrer and Origin based checks
-- Checks
-  - True entropy of tokens
-  - Checking if server checks the token to a specific length
- and more...
+#### Crawling
+Bolt crawls the target website to the specified depth and stores all the HTML forms found in a database for further processing.
+
+#### Evaluating
+In this phase, Bolt finds out the tokens which aren't strong enough and the forms which aren't protected.
+
+##### Comparing
+This phase focuses on detection on replay attack scenarios and hence checks if a token has been issued more than one time.
+It also calculates the average [levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) between all the tokens to see if they are similar.\
+Tokens are also compared against a database of 250+ hash patterns.
+
+##### Observing
+In this phase, 100 simultaneous requests are made to a single webpage to see if same tokens are generated for the requests.
+
+##### Testing
+This phase is dedicated to active testing of the CSRF protection mechanism. It includes but not limited to checking if protection exsists for moblie browsers, submitting requests with self-generated token and testing if token is being checked to a certain length.
+
+##### Analysing
+Various statistical checks are performed in this phase to see if the token is really random.
+Following tests are performed during this phase
+- Monobit frequency test
+- Block frequency test
+- Runs test
+- Spectral test
+- Non-overlapping template matching test
+- Overlapping template matching test
+- Serial test
+- Cumultative sums test
+- Aproximate entropy test
+- Random excursions variant test
+- Linear complexity test
+- Longest runs test
+- Maurers universal statistic test
+- Random excursions test
 
 ### Usage
 
@@ -62,4 +79,5 @@ Other options and switches:
 - `--headers` supply http headers
 
 #### Credits
-Regular Expressions for detecting hashes are taken from [hashID](https://github.com/psypanda/hashID).
+Regular Expressions for detecting hashes are taken from [hashID](https://github.com/psypanda/hashID).\
+Bit level entropy tests are taken from [highfestiva](https://github.com/highfestiva)'s python implementation of statistical tests.

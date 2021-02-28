@@ -1,6 +1,7 @@
 from re import match
-from core.utils import entropy
+from core.utils import strength
 from core.config import commonNames
+
 
 def evaluate(dataset, weakTokens, tokenDatabase, allTokens, insecureForms):
     done = []
@@ -16,15 +17,15 @@ def evaluate(dataset, weakTokens, tokenDatabase, allTokens, insecureForms):
                     name = inp['name']
                     value = inp['value']
                     if value and match(r'^[\w\-_]+$', value):
-                        if entropy(value) > 10:
+                        if strength(value) > 10:
                             localTokens.add(value)
                             protected = True
                             break
                         elif name.lower() in commonNames:
-                            weakTokens.append({url : {name : value}})
+                            weakTokens.append({url: {name: value}})
                 if not protected and action not in done:
                     done.append(done)
-                    insecureForms.append({url : each})
+                    insecureForms.append({url: each})
             for token in localTokens:
                 allTokens.append(token)
-            tokenDatabase.append({url : localTokens})
+            tokenDatabase.append({url: localTokens})

@@ -1,9 +1,13 @@
-from core.colors import green, yellow, end, run, good, info, bad, white
+from core.colors import green, yellow, end, run, good, info, bad, white, red
+
+lightning = '\033[93;5m⚡\033[0m'
+
 
 def banner():
-    print ('''%s
-    ⚡ %sBOLT%s  ⚡ v0.1.2-alpha
-    %s''' % (yellow, white, yellow, end))
+    print ('''
+     %s⚡ %sBOLT%s  ⚡%s
+    ''' % (yellow, white, yellow, end))
+
 
 banner()
 
@@ -26,8 +30,7 @@ import random
 import re
 import statistics
 
-import core.config
-from core.config import token
+from core.entropy import isRandom
 from core.datanize import datanize
 from core.prompt import prompt
 from core.photon import photon
@@ -36,25 +39,30 @@ from core.evaluate import evaluate
 from core.ranger import ranger
 from core.zetanize import zetanize
 from core.requester import requester
-from core.utils import extractHeaders, entropy, isProtected
+from core.utils import extractHeaders, strength, isProtected, stringToBinary, longestCommonSubstring
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-u', help='target url', dest='target')
 parser.add_argument('-t', help='number of threads', dest='threads', type=int)
 parser.add_argument('-l', help='levels to crawl', dest='level', type=int)
-parser.add_argument('--delay', help='delay between requests', dest='delay', type=int)
-parser.add_argument('--timeout', help='http request timeout', dest='timeout', type=int)
-parser.add_argument('--headers', help='http headers', dest='headers', action='store_true')
+parser.add_argument('--delay', help='delay between requests',
+                    dest='delay', type=int)
+parser.add_argument('--timeout', help='http request timeout',
+                    dest='timeout', type=int)
+parser.add_argument('--headers', help='http headers',
+                    dest='add_headers', nargs='?', const=True)
 args = parser.parse_args()
 
 if not args.target:
     print('\n' + parser.format_help().lower())
     quit()
 
-if args.headers:
+if type(args.add_headers) == bool:
     headers = extractHeaders(prompt())
+elif type(args.add_headers) == str:
+    headers = extractHeaders(args.add_headers)
 else:
-    headers = core.config.headers
+    from core.config import headers
 
 target = args.target
 delay = args.delay or 0
@@ -67,11 +75,14 @@ weakTokens = []
 tokenDatabase = []
 insecureForms = []
 
-print ('%s Phase: Crawling %s[%s1/5%s]%s' % (run, green, end, green, end))
+print (' %s Phase: Crawling %s[%s1/6%s]%s' %
+       (lightning, green, end, green, end))
 dataset = photon(target, headers, level, threadCount)
 allForms = dataset[0]
-print ('\r%s Crawled %i URL(s) and found %i form(s).%-10s' % (info, dataset[1], len(allForms), ' '))
-print ('%s Phase: Evaluating %s[%s2/5%s]%s' % (run, green, end, green, end))
+print ('\r%s Crawled %i URL(s) and found %i form(s).%-10s' %
+       (info, dataset[1], len(allForms), ' '))
+print (' %s Phase: Evaluating %s[%s2/6%s]%s' %
+       (lightning, green, end, green, end))
 
 evaluate(allForms, weakTokens, tokenDatabase, allTokens, insecureForms)
 
@@ -89,10 +100,31 @@ if insecureForms:
         action = list(insecureForm.values())[0]['action']
         form = action.replace(target, '')
         if form:
-            print ('%s %s %s[%s%s%s]%s' % (bad, url, green, end, form, green, end))
+            print ('%s %s %s[%s%s%s]%s' %
+                   (bad, url, green, end, form, green, end))
+
+print (' %s Phase: Comparing %s[%s3/6%s]%s' %
+       (lightning, green, end, green, end))
+uniqueTokens = set(allTokens)
+if len(uniqueTokens) < len(allTokens):
+    print ('%s Potential Replay Attack condition found' % good)
+    print ('%s Verifying and looking for the cause' % run)
+    replay = False
+    for url, token in tokenDatabase:
+        for url2, token2 in tokenDatabase:
+            if token == token2 and url != url2:
+                print ('%s The same token was used on %s%s%s and %s%s%s' %
+                       (good, green, url, end, green, url2, end))
+                replay = True
+    if not replay:
+        print ('%s Further investigation shows that it was a false positive.')
 
 with open('./db/hashes.json') as f:
     hashPatterns = json.load(f)
+
+if not allTokens:
+    print ('%s No CSRF protection to test' % bad)
+    quit()
 
 aToken = allTokens[0]
 matches = []
@@ -106,19 +138,6 @@ if matches:
     for name in matches:
         print ('    %s>%s %s' % (yellow, end, name))
 
-print ('%s Phase: Comparing %s[%s3/5%s]%s' % (run, green, end, green, end))
-uniqueTokens = set(allTokens)
-if len(uniqueTokens) < len(allTokens):
-    print ('%s Potential Replay Attack condition found' % good)
-    print ('%s Verifying and looking for the cause' % run)
-    replay = False
-    for url, token in tokenDatabase:
-        for url2, token2 in tokenDatabase:
-            if token == token2 and url != url2:
-                print ('%s The same token was used on %s%s%s and %s%s%s' % (good, green, url, end, green, url2, end))
-                replay = True
-    if not replay:
-        print ('%s Further investigation shows that it was a false positive.')
 
 def fuzzy(tokens):
     averages = []
@@ -136,17 +155,45 @@ def fuzzy(tokens):
         averages.append(average)
     return statistics.mean(averages)
 
+
 try:
     similarity = fuzzy(allTokens)
-    print ('%s Tokens are %s%i%%%s similar to each other on an average' % (info, green, similarity, end))
+    print ('%s Tokens are %s%i%%%s similar to each other on an average' %
+           (info, green, similarity, end))
 except statistics.StatisticsError:
     print ('%s No CSRF protection to test' % bad)
     quit()
 
+
+def staticParts(allTokens):
+    strings = list(set(allTokens.copy()))
+    commonSubstrings = {}
+    for theString in strings:
+        strings.remove(theString)
+        for string in strings:
+            commonSubstring = longestCommonSubstring(theString, string)
+            if commonSubstring not in commonSubstrings:
+                commonSubstrings[commonSubstring] = []
+            if len(commonSubstring) > 2:
+                if theString not in commonSubstrings[commonSubstring]:
+                    commonSubstrings[commonSubstring].append(theString)
+                if string not in commonSubstrings[commonSubstring]:
+                    commonSubstrings[commonSubstring].append(string)
+    return commonSubstrings
+
+
+result = {k: v for k, v in staticParts(allTokens).items() if v}
+
+if result:
+    print ('%s Common substring found' % info)
+    print (json.dumps(result, indent=4))
+
 simTokens = []
 
-print ('%s Phase: Observing %s[%s4/5%s]%s' % (run, green, end, green, end))
+print (' %s Phase: Observing %s[%s4/6%s]%s' %
+       (lightning, green, end, green, end))
 print ('%s 100 simultaneous requests are being made, please wait.' % info)
+
 
 def extractForms(url):
     response = requester(url, {}, headers, True, 0).text
@@ -156,9 +203,10 @@ def extractForms(url):
         inputs = each['inputs']
         for inp in inputs:
             value = inp['value']
-            if value and match(r'^[\w\-_]+$', value):
-                if entropy(value) > 10:
+            if value and re.match(r'^[\w\-_]+$', value):
+                if strength(value) > 10:
                     simTokens.append(value)
+
 
 while True:
     sample = random.choice(tokenDatabase)
@@ -168,7 +216,8 @@ while True:
         break
 
 threadpool = concurrent.futures.ThreadPoolExecutor(max_workers=30)
-futures = (threadpool.submit(extractForms, goodCandidate) for goodCandidate in [goodCandidate] * 30)
+futures = (threadpool.submit(extractForms, goodCandidate)
+           for goodCandidate in [goodCandidate] * 30)
 for i in concurrent.futures.as_completed(futures):
     pass
 
@@ -180,18 +229,20 @@ if simTokens:
 else:
     print ('%s Different tokens were issued for simultaneous requests.' % info)
 
-print ('%s Phase: Testing %s[%s5/5%s]%s' % (good, green, end, green, end))
+print (' %s Phase: Testing %s[%s5/6%s]%s' %
+       (lightning, green, end, green, end))
 
 parsed = ''
 print ('%s Finding a suitable form for further testing. It may take a while.' % run)
-for url, forms in allForms[0].items():
-    found = False
-    parsed = datanize(forms, tolerate=True)
-    if parsed:
-        found = True
-        break
-    if found:
-        break
+for form_dict in allForms:
+    for url, forms in form_dict.items():
+        found = False
+        parsed = datanize(forms, tolerate=True)
+        if parsed:
+            found = True
+            break
+        if found:
+            break
 
 if not parsed:
     candidate = list(random.choice(tokenDatabase).keys())[0]
@@ -229,6 +280,7 @@ else:
     print ('%s CSRF protection isn\'t enabled for mobile browsers.' % good)
 
 print ('%s Making a request without CSRF token parameter.' % run)
+
 data = tweaker(origData, 'remove')
 response = requester(origUrl, data, headers, origGET, 0)
 if response.status_code == originalCode:
@@ -240,22 +292,10 @@ if response.status_code == originalCode:
             print ('%s It worked!' % good)
 else:
     print ('%s It didn\'t work' % bad)
+
 print ('%s Making a request without CSRF token parameter value.' % run)
 data = tweaker(origData, 'clear')
-response = requester(origUrl, data, headers, origGET, 0)
-if response.status_code == originalCode:
-    if str(originalCode)[0] in ['4', '5']:
-        print ('%s It didn\'t work' % bad)
-    else:
-        difference = abs(originalLength - len(response.text))
-        if difference <= tolerableDifference:
-            print ('%s It worked!' % good)
-else:
-    print ('%s It didn\'t work' % bad)
-seeds = ranger(allTokens)
-print ('%s Generating a fake token.' % run)
-data = tweaker(origData, 'generate', seeds=seeds)
-print ('%s Making a request with the self generated token.' % run)
+
 response = requester(origUrl, data, headers, origGET, 0)
 if response.status_code == originalCode:
     if str(originalCode)[0] in ['4', '5']:
@@ -267,7 +307,48 @@ if response.status_code == originalCode:
 else:
     print ('%s It didn\'t work' % bad)
 
-print ('%s Making requests with various tweaks to the token. It may take a while.' % run)
-# data = datanize(goodCandidate, headers)[1]
-# data = tweaker(data, 'remove')
-# response = requester(origUrl, data, headers, origGET, 0)
+
+seeds = ranger(allTokens)
+
+print ('%s Checking if tokens are checked to a specific length' % run)
+
+for index in range(len(allTokens[0])):
+    data = tweaker(origData, 'replace', index=index, seeds=seeds)
+    response = requester(origUrl, data, headers, origGET, 0)
+    if response.status_code == originalCode:
+        if str(originalCode)[0] in ['4', '5']:
+            break
+        else:
+            difference = abs(originalLength - len(response.text))
+            if difference <= tolerableDifference:
+                print ('%s Last %i chars of token aren\'t being checked' %
+                       (good, index + 1))
+    else:
+        break
+
+print ('%s Generating a fake token.' % run)
+
+data = tweaker(origData, 'generate', seeds=seeds)
+print ('%s Making a request with the self generated token.' % run)
+
+response = requester(origUrl, data, headers, origGET, 0)
+if response.status_code == originalCode:
+    if str(originalCode)[0] in ['4', '5']:
+        print ('%s It didn\'t work' % bad)
+    else:
+        difference = abs(originalLength - len(response.text))
+        if difference <= tolerableDifference:
+            print ('%s It worked!' % good)
+else:
+    print ('%s It didn\'t work' % bad)
+
+print (' %s Phase: Analysing %s[%s6/6%s]%s' %
+       (lightning, green, end, green, end))
+
+binary = stringToBinary(''.join(allTokens))
+result = isRandom(binary)
+for name, result in result.items():
+    if not result:
+        print ('%s %s : %s%s%s' % (good, name, green, 'non-random', end))
+    else:
+        print ('%s %s : %s%s%s' % (bad, name, red, 'random', end))
